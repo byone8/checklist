@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CheckMaster</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SortableJS -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <!-- SheetJS (xlsx) -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 240 10% 3.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 240 10% 3.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 240 10% 3.9%;
+            --primary: 240 5.9% 10%;
+            --primary-foreground: 0 0% 98%;
+            --secondary: 240 4.8% 95.9%;
+            --secondary-foreground: 240 5.9% 10%;
+            --muted: 240 4.8% 95.9%;
+            --muted-foreground: 240 3.8% 46.1%;
+            --accent: 240 4.8% 95.9%;
+            --accent-foreground: 240 5.9% 10%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 0 0% 98%;
+            --border: 240 5.9% 90%;
+            --input: 240 5.9% 90%;
+            --ring: 240 5.9% 10%;
+            --radius: 0.5rem;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            @apply bg-background text-foreground antialiased;
+        }
+    </style>
+</head>
+
+<body class="bg-background text-foreground min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header
+        class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div class="container flex h-14 items-center px-4 md:px-8 max-w-screen-lg mx-auto">
+            <div class="mr-4 flex items-center gap-2 font-bold text-lg tracking-tight">
+                <i data-lucide="check-square" class="h-6 w-6"></i>
+                <span>CheckMaster</span>
+            </div>
+
+            <nav class="flex items-center space-x-1 ml-auto md:ml-6 text-sm font-medium">
+                <button
+                    class="nav-item transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground active"
+                    data-target="dashboard-view">
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    대시보드
+                </button>
+                <button
+                    class="nav-item transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent hover:text-accent-foreground"
+                    data-target="templates-view">
+                    <i data-lucide="folder-kanban" class="h-4 w-4"></i>
+                    프로젝트 관리
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 container max-w-screen-lg mx-auto py-10 px-4 md:px-8">
+        <h2 id="page-title" class="hidden text-3xl font-bold tracking-tight mb-8"></h2>
+
+        <div id="content-area">
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view-section space-y-8">
+                <!-- Welcome/Start Card -->
+                <div
+                    class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-8 text-center bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+                    <div class="max-w-md mx-auto flex flex-col sm:flex-row gap-3">
+                        <select id="new-session-template-select"
+                            class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+                            <option value="">프로젝트 선택...</option>
+                        </select>
+                        <button id="btn-start-session"
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-10 px-8">
+                            시작하기
+                        </button>
+                    </div>
+                </div>
+
+                <!-- History -->
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold tracking-tight">최근 기록</h3>
+                    <div id="session-list" class="grid gap-3">
+                        <!-- Dynamic Sessions -->
+                        <div
+                            class="flex h-32 items-center justify-center rounded-md border border-dashed border-muted-foreground/25 bg-muted/50 text-muted-foreground text-sm">
+                            저장된 기록이 없습니다.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Management -->
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold tracking-tight">데이터 관리</h3>
+                    <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6">
+                        <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                            <div class="space-y-1">
+                                <p class="text-sm font-medium leading-none">데이터 백업 및 복원</p>
+                                <p class="text-sm text-muted-foreground">앱의 모든 데이터를 파일로 저장하거나 복원합니다.</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button id="btn-backup-json"
+                                    class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                                    <i data-lucide="download" class="h-4 w-4 mr-2"></i>
+                                    백업 (.json)
+                                </button>
+                                <button id="btn-backup-excel"
+                                    class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                                    <i data-lucide="sheet" class="h-4 w-4 mr-2"></i>
+                                    Excel 내보내기
+                                </button>
+                                <button id="btn-restore-trigger"
+                                    class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 h-9 px-4 py-2">
+                                    <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
+                                    데이터 복원
+                                </button>
+                                <input type="file" id="input-restore-json" accept=".json" class="hidden">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Templates View -->
+            <div id="templates-view" class="view-section hidden space-y-8">
+                <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+                    <div class="flex flex-col space-y-1.5 p-6 border-b border-border">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-semibold leading-none tracking-tight">프로젝트 목록</h3>
+                            <button id="btn-create-template"
+                                class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2 gap-2">
+                                <i data-lucide="plus" class="h-4 w-4"></i>
+                                새 프로젝트 만들기
+                            </button>
+                        </div>
+                    </div>
+                    <div id="template-list" class="p-6 grid gap-4">
+                        <!-- Dynamic Templates -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Session View -->
+            <div id="active-session-view" class="view-section hidden">
+                <div class="space-y-6">
+                    <div class="space-y-2">
+                        <input type="text" id="active-session-title" placeholder="제목 없음"
+                            class="flex w-full rounded-md border-transparent bg-transparent px-0 py-2 text-4xl font-extrabold placeholder:text-muted-foreground focus:outline-none focus:ring-0 focus:border-transparent tracking-tight">
+                        <div class="text-sm text-muted-foreground flex items-center gap-2">
+                            <i data-lucide="calendar" class="h-4 w-4"></i>
+                            <span id="active-session-date"></span>
+                        </div>
+                    </div>
+
+                    <div id="checklist-items-container"
+                        class="space-y-0 divide-y divide-border border-t border-b border-border">
+                        <!-- Dynamic Items -->
+                    </div>
+
+                    <div class="flex items-center gap-2 pt-6">
+                        <button id="btn-export-txt"
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3">TXT</button>
+                        <button id="btn-export-csv"
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3">Excel</button>
+                        <button id="btn-print"
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3">인쇄
+                            / PDF</button>
+
+                        <div class="flex-1"></div>
+                        <button id="btn-save-session"
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-6 ml-auto">
+                            <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                            저장
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Template Editor View -->
+            <div id="template-editor-view" class="view-section hidden">
+                <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-8">
+                    <div class="space-y-8">
+                        <div class="space-y-2">
+                            <label
+                                class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-muted-foreground">프로젝트명</label>
+                            <input type="text" id="edit-template-title" placeholder="새 프로젝트"
+                                class="flex h-12 w-full rounded-md border border-input bg-transparent px-3 py-2 text-2xl font-bold placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between border-b pb-2">
+                                <h4 class="font-semibold tracking-tight">질문 항목</h4>
+                            </div>
+
+                            <div id="edit-questions-list" class="space-y-3">
+                                <!-- Dynamic Inputs -->
+                            </div>
+
+                            <button id="btn-add-question"
+                                class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-dashed border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-10 w-full text-muted-foreground hover:text-foreground">
+                                <i data-lucide="plus-circle" class="h-4 w-4 mr-2"></i>
+                                항목 추가
+                            </button>
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4">
+                            <button id="btn-cancel-template"
+                                class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">취소</button>
+                            <button id="btn-save-template"
+                                class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-10 px-4 py-2">저장
+                                완료</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast"
+        class="fixed bottom-6 right-6 z-50 rounded-md border bg-foreground text-background px-6 py-3 text-sm font-medium shadow-lg transition-all transform translate-y-0 opacity-100 hidden">
+        Action Successful
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
