@@ -37,14 +37,26 @@ class FirestoreManager {
         db.collection("templates").orderBy("created", "desc").onSnapshot((snapshot) => {
             this.templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.onDataChange('templates');
+            console.log("Templates loaded:", this.templates.length);
+        }, (error) => {
+            console.error("Templates sync error:", error);
+            alert("데이터 동기화 오류 (Templates): " + error.message);
         });
 
         // Listen to Checklists (Sessions)
-        // User requested 'checklists' collection name
         db.collection("checklists").orderBy("created", "desc").onSnapshot((snapshot) => {
             this.sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             this.onDataChange('sessions');
+            console.log("Sessions loaded:", this.sessions.length);
+        }, (error) => {
+            console.error("Sessions sync error:", error);
+            alert("데이터 동기화 오류 (Checklists): " + error.message + "\n\nFirestore 보안 규칙(Rules)이 차단 중일 수 있습니다.");
         });
+
+        // Connection Test
+        db.collection("connection_test").doc("ping").set({ last_seen: Date.now() })
+            .then(() => console.log("Write connection success"))
+            .catch(e => console.error("Write connection failed:", e));
     }
 
     // -- CRUD Operations: Templates --
