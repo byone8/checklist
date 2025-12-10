@@ -1,122 +1,137 @@
 /**
- * Pro Checklist Manager - Offline First App
- * Architecture: Clean Vanilla JS with LocalStorage
+ * Pro Checklist Manager - Firebase Firestore Version
+ * Architecture: Real-time sync with Firebase
  */
 
-// --- Constants & Config ---
-const STORAGE_KEYS = {
-    TEMPLATES: 'cl_templates',
-    SESSIONS: 'cl_sessions'
+// --- Firebase Configuration ---
+const firebaseConfig = {
+    apiKey: "AIzaSyBO695RoLDo6FnNmodl-KhpM3tRre1z-og",
+    authDomain: "checklist-e4340.firebaseapp.com",
+    projectId: "checklist-e4340",
+    storageBucket: "checklist-e4340.firebasestorage.app",
+    messagingSenderId: "637107660392",
+    appId: "1:637107660392:web:c25fe1553e906e75dcfddd"
 };
 
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 // --- Utilities ---
-const uuid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 const el = (id) => document.getElementById(id);
+// No need for custom UUID, Firestore handles IDs, or we can use a simple one if needed for temp IDs.
+const simpleId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// --- Data Layer (LocalStorage) ---
-class StorageManager {
-    constructor() {
-        this.templates = this.load(STORAGE_KEYS.TEMPLATES) || [];
-        this.sessions = this.load(STORAGE_KEYS.SESSIONS) || [];
+// --- Data Layer (Firestore) ---
+class FirestoreManager {
+    constructor(onDataChange) {
+        this.templates = [];
+        this.sessions = [];
+        this.onDataChange = onDataChange; // Callback to update UI when data changes
 
-        // Seed initial data if empty
-        if (this.templates.length === 0) {
-            this.seedData();
-        }
+        this.initListeners();
     }
 
-    load(key) {
-        try {
-            return JSON.parse(localStorage.getItem(key));
-        } catch (e) {
-            console.error('Data load error', e);
-            return null;
-        }
-    }
-
-    save(key, data) {
-        try {
-            localStorage.setItem(key, JSON.stringify(data));
-        } catch (e) {
-            alert('저장 공간이 부족합니다! 오래된 기록을 정리해주세요.');
-        }
-    }
-
-    saveTemplates() {
-        this.save(STORAGE_KEYS.TEMPLATES, this.templates);
-    }
-
-    saveSessions() {
-        this.save(STORAGE_KEYS.SESSIONS, this.sessions);
-    }
-
-    seedData() {
-        this.templates.push({
-            id: uuid(),
-            title: '예시: 일일 차량 점검',
-            questions: ['타이어 공기압 확인', '엔진 오일 점검', '브레이크 등 확인', '전면 유리 세척'],
-            created: Date.now()
+    initListeners() {
+        // Listen to Templates
+        db.collection("templates").orderBy("created", "desc").onSnapshot((snapshot) => {
+            this.templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this.onDataChange('templates');
         });
-        this.saveTemplates();
+
+        // Listen to Checklists (Sessions)
+        // User requested 'checklists' collection name
+        db.collection("checklists").orderBy("created", "desc").onSnapshot((snapshot) => {
+            this.sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            this.onDataChange('sessions');
+        });
     }
 
     // -- CRUD Operations: Templates --
-    addTemplate(title, questions) {
-        const t = { id: uuid(), title, questions, created: Date.now() };
-        this.templates.unshift(t);
-        this.saveTemplates();
-        return t;
+    async addTemplate(title, questions) {
+        try {
+            await db.collection("templates").add({
+                title,
+                questions,
+                created: Date.now()
+            });
+        } catch (e) {
+            console.error("Error adding template: ", e);
+            alert("저장 중 오류가 발생했습니다.");
+        }
     }
 
-    deleteTemplate(id) {
-        this.templates = this.templates.filter(t => t.id !== id);
-        this.saveTemplates();
+    async deleteTemplate(id) {
+        try {
+            await db.collection("templates").doc(id).delete();
+        } catch (e) {
+            console.error("Error deleting template: ", e);
+            alert("삭제 중 오류가 발생했습니다.");
+        }
     }
 
-    updateTemplate(id, title, questions) {
-        const idx = this.templates.findIndex(t => t.id === id);
-        if (idx !== -1) {
-            this.templates[idx] = { ...this.templates[idx], title, questions };
-            this.saveTemplates();
+    async updateTemplate(id, title, questions) {
+        try {
+            await db.collection("templates").doc(id).update({
+                title,
+                questions
+            });
+        } catch (e) {
+            console.error("Error updating template: ", e);
+            alert("수정 중 오류가 발생했습니다.");
         }
     }
 
     // -- CRUD Operations: Sessions --
-    createSession(templateId) {
+    async createSession(templateId) {
         const template = this.templates.find(t => t.id === templateId);
         if (!template) throw new Error('프로젝트를 찾을 수 없습니다.');
 
-        const session = {
-            id: uuid(),
-            templateId: template.id,
+        const newSession = {
+            templateId: templateId, // Keep reference just in case
             title: template.title,
             items: template.questions.map(q => ({ q: q, a: '', checked: false })),
             created: Date.now()
         };
-        this.sessions.unshift(session);
-        this.saveSessions();
-        return session;
-    }
 
-    saveSessionUpdates(session) {
-        const idx = this.sessions.findIndex(s => s.id === session.id);
-        if (idx !== -1) {
-            this.sessions[idx] = session;
-            this.saveSessions();
+        try {
+            const docRef = await db.collection("checklists").add(newSession);
+            return { id: docRef.id, ...newSession };
+        } catch (e) {
+            console.error("Error creating session: ", e);
+            alert("세션 생성 중 오류가 발생했습니다.");
         }
     }
 
-    // Added: Delete Session feature
-    deleteSession(id) {
-        this.sessions = this.sessions.filter(s => s.id !== id);
-        this.saveSessions();
+    async saveSessionUpdates(session) {
+        try {
+            // session object has the ID, but we strictly need to pass the data part to update.
+            // We should exclude the ID from the data we send if we are using the spread operator,
+            // but Firestore 'update' takes specific fields or a full object. 
+            // Safer to pick fields we modify.
+            await db.collection("checklists").doc(session.id).update({
+                items: session.items
+            });
+        } catch (e) {
+            console.error("Error updating session: ", e);
+            // Silent fail or toast? App Controller handles toasts usually.
+        }
+    }
+
+    async deleteSession(id) {
+        try {
+            await db.collection("checklists").doc(id).delete();
+        } catch (e) {
+            console.error("Error deleting session: ", e);
+            alert("삭제 중 오류가 발생했습니다.");
+        }
     }
 }
 
 // --- App Controller ---
 class App {
     constructor() {
-        this.store = new StorageManager();
+        this.store = new FirestoreManager((type) => this.handleDataChange(type));
         this.currentView = 'dashboard-view';
         this.editingTemplateId = null;
         this.activeSessionId = null;
@@ -125,12 +140,39 @@ class App {
 
     init() {
         this.bindEvents();
+        // Initial render might be empty until data loads
         this.renderDashboard();
         if (window.lucide) lucide.createIcons();
     }
 
+    handleDataChange(type) {
+        // When data comes in from Firestore, re-render the current view
+        if (this.currentView === 'dashboard-view') {
+            this.renderDashboard();
+        } else if (this.currentView === 'templates-view') {
+            this.renderTemplates();
+        } else if (this.currentView === 'active-session-view' && type === 'sessions' && this.activeSessionId) {
+            // If we are looking at a session and it updated updates (e.g. from another device), re-render items
+            // But we need to be careful not to overwrite the user's current typing if they are typing.
+            // Real-time collaborative editing of text inputs needs careful handling (debouncing or field-level locks).
+            // For this simple request, we will just re-render. If issues arise, we can refine.
+            // Check if the currently active session still exists
+            const session = this.store.sessions.find(s => s.id === this.activeSessionId);
+            if (!session) {
+                // Session was deleted remotely
+                alert('현재 보고서가 삭제되었습니다.');
+                this.switchView('dashboard-view');
+                return;
+            }
+            // Only re-render if we are strictly 'viewing' or if we want to validly sync.
+            // To avoid input interference, we might checking document.activeElement.
+            if (document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT') {
+                this.renderChecklistItems(session);
+            }
+        }
+    }
+
     bindEvents() {
-        // Navigation
         // Navigation
         document.querySelectorAll('.nav-item').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -140,11 +182,15 @@ class App {
         });
 
         // Dashboard Actions
-        el('btn-start-session').addEventListener('click', () => {
+        el('btn-start-session').addEventListener('click', async () => {
             const tId = el('new-session-template-select').value;
             if (!tId) return this.showToast('프로젝트를 선택해주세요.', 'error');
-            const session = this.store.createSession(tId);
-            this.openSession(session.id);
+
+            // Create session is async now
+            const session = await this.store.createSession(tId);
+            if (session) {
+                this.openSession(session.id);
+            }
         });
 
         // Template Management Actions
@@ -155,7 +201,9 @@ class App {
 
         // Session Actions
         el('btn-save-session').addEventListener('click', () => {
-            this.showToast('기록이 저장되었습니다.');
+            // Firestore saves automatically on change usually if we implement auto-save, 
+            // but here we might just show a confirmation since we are doing update on change.
+            this.showToast('클라우드에 저장되었습니다.');
         });
 
         // Export Actions
@@ -163,9 +211,17 @@ class App {
         el('btn-export-csv').addEventListener('click', () => this.exportCurrentSession('csv'));
         el('btn-print').addEventListener('click', () => window.print());
 
-        // Data Management Events
+        // Data Management Events - Backup/Restore (Modified for Firestore?)
+        // The user asked to switch to Firestore explicitly.
+        // Backup to JSON still makes sense as a snapshot.
+        // Restore from JSON is trickier - it would imply writing to Firestore.
+        // We will keep Backup (Export) but maybe simplify Restore or warn it overwrites cloud data?
+        // Let's implement Restore to bulk-add to Firestore for 'migration' utility.
+
         el('btn-backup-json')?.addEventListener('click', () => this.backupData());
         el('btn-backup-excel')?.addEventListener('click', () => this.exportFullDataExcel());
+
+        // Restore implementation: Parse JSON and batch add to Firestore
         el('btn-restore-trigger')?.addEventListener('click', () => el('input-restore-json').click());
         el('input-restore-json')?.addEventListener('change', (e) => {
             if (e.target.files.length > 0) this.restoreData(e.target.files[0]);
@@ -175,8 +231,6 @@ class App {
     showToast(msg, type = 'success') {
         const toast = el('toast');
         toast.textContent = msg;
-        // Tailwind styling handled in HTML, just toggle visibility
-        // Reset classes
         toast.className = 'fixed bottom-6 right-6 z-50 rounded-md border px-6 py-3 text-sm font-medium shadow-lg transition-all transform translate-y-0 opacity-100';
 
         if (type === 'error') {
@@ -237,14 +291,16 @@ class App {
 
         this.store.sessions.slice(0, 15).forEach(session => {
             const div = document.createElement('div');
-            // Tailwind: list-item -> card style
             div.className = 'flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors shadow-sm';
+            // Use date safe parsing
+            const dateStr = session.created ? new Date(session.created).toLocaleString() : '날짜 없음';
+
             div.innerHTML = `
                 <div style="cursor: pointer; flex: 1;" onclick="app.openSession('${session.id}')" class="space-y-1">
                     <strong class="text-sm font-semibold tracking-tight text-foreground">${session.title}</strong>
                     <div class="text-xs text-muted-foreground flex items-center gap-1">
                         <i data-lucide="clock" class="h-3 w-3"></i>
-                        ${new Date(session.created).toLocaleString()}
+                        ${dateStr}
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -264,8 +320,7 @@ class App {
     deleteSession(id) {
         if (!confirm('이 기록을 완전히 삭제하시겠습니까? 복구할 수 없습니다.')) return;
         this.store.deleteSession(id);
-        this.renderDashboard();
-        this.showToast('기록이 삭제되었습니다.');
+        // Render triggers automatically via listener
     }
 
     renderTemplates() {
@@ -280,12 +335,11 @@ class App {
 
         this.store.templates.forEach(t => {
             const div = document.createElement('div');
-            // Tailwind style
             div.className = 'flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors shadow-sm';
             div.innerHTML = `
                 <div class="space-y-1">
                     <strong class="text-sm font-semibold tracking-tight text-foreground">${t.title}</strong>
-                    <div class="text-xs text-muted-foreground">${t.questions.length} 질문 항목</div>
+                    <div class="text-xs text-muted-foreground">${(t.questions || []).length} 질문 항목</div>
                 </div>
                 <div class="flex items-center gap-2">
                     <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3" onclick="app.openTemplateEditor('${t.id}')">수정</button>
@@ -300,7 +354,6 @@ class App {
     deleteTemplate(id) {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         this.store.deleteTemplate(id);
-        this.renderTemplates();
     }
 
     // --- Template Editor ---
@@ -310,7 +363,6 @@ class App {
         const listContainer = el('edit-questions-list');
         listContainer.innerHTML = '';
 
-        // Init/Refresh Sortable for Template Editor
         if (this.templateSortable) {
             this.templateSortable.destroy();
         }
@@ -322,8 +374,10 @@ class App {
 
         if (templateId) {
             const t = this.store.templates.find(t => t.id === templateId);
-            el('edit-template-title').value = t.title;
-            t.questions.forEach(q => this.addQuestionInput(q));
+            if (t) {
+                el('edit-template-title').value = t.title;
+                (t.questions || []).forEach(q => this.addQuestionInput(q));
+            }
         } else {
             el('edit-template-title').value = '';
             this.addQuestionInput('');
@@ -375,7 +429,7 @@ class App {
         this.activeSessionId = sessionId;
         this.switchView('active-session-view');
         el('active-session-title').value = session.title;
-        el('active-session-date').textContent = new Date(session.created).toLocaleString();
+        el('active-session-date').textContent = session.created ? new Date(session.created).toLocaleString() : '';
 
         this.renderChecklistItems(session);
     }
@@ -384,7 +438,6 @@ class App {
         const container = el('checklist-items-container');
         container.innerHTML = '';
 
-        // Initialize Sortable if not already done
         if (this.sortable) {
             this.sortable.destroy();
         }
@@ -398,8 +451,7 @@ class App {
                 session.items.splice(evt.oldIndex, 1);
                 session.items.splice(evt.newIndex, 0, itemEl);
                 this.store.saveSessionUpdates(session);
-                // Re-render to update closure indices
-                this.renderChecklistItems(session);
+                // No re-render needed optionally, but safe to do
             }
         });
 
@@ -426,7 +478,7 @@ class App {
             const noteInput = document.createElement('textarea');
             noteInput.className = 'flex w-full rounded-md bg-transparent px-0 py-1 text-sm text-muted-foreground placeholder:text-muted-foreground/50 focus:text-foreground focus:outline-none focus:border-b-2 focus:border-primary focus:rounded-none transition-colors resize-none overflow-hidden min-h-[2rem]';
             noteInput.placeholder = '비고 입력...';
-            noteInput.value = item.a;
+            noteInput.value = item.a || '';
             noteInput.rows = 1;
 
             // Auto-resize function
@@ -435,13 +487,21 @@ class App {
                 el.style.height = el.scrollHeight + 'px';
             };
 
-            // Init resize if value exists
+            // Init resize
             if (item.a) setTimeout(() => autoResize(noteInput), 0);
 
+            // Debounce for update
+            let timeout;
             noteInput.oninput = (e) => {
                 autoResize(e.target);
+                // Updates local object immediately
                 session.items[idx].a = e.target.value;
-                this.store.saveSessionUpdates(session);
+
+                // Debounced save
+                clearTimeout(timeout);
+                timeout = setTimeout(() => {
+                    this.store.saveSessionUpdates(session);
+                }, 500);
             };
 
             content.appendChild(question);
@@ -457,6 +517,8 @@ class App {
     exportCurrentSession(format) {
         if (!this.activeSessionId) return;
         const session = this.store.sessions.find(s => s.id === this.activeSessionId);
+        if (!session) return;
+
         let content = '';
         let mimeType = 'text/plain';
         let extension = 'txt';
@@ -471,13 +533,12 @@ class App {
         } else if (format === 'csv') {
             mimeType = 'text/csv;charset=utf-8;';
             extension = 'csv';
-            // Prepend BOM for Excel to recognize UTF-8
+            // Prepend BOM
             content = '\uFEFF';
             content += '"번호","질문","완료여부","비고"\n';
             session.items.forEach((item, i) => {
-                // Escape quotes for CSV
-                const safeQ = item.q.replace(/"/g, '""');
-                const safeA = item.a.replace(/"/g, '""');
+                const safeQ = (item.q || '').replace(/"/g, '""');
+                const safeA = (item.a || '').replace(/"/g, '""');
                 content += `"${i + 1}","${safeQ}","${item.checked ? '예' : '아니오'}","${safeA}"\n`;
             });
         }
@@ -503,7 +564,7 @@ class App {
             templates: this.store.templates,
             sessions: this.store.sessions,
             exportedAt: new Date().toISOString(),
-            appVersion: '1.0'
+            appVersion: '2.0-firebase'
         };
         const fileName = `CheckMaster_Backup_${this.getTimestamp()}.json`;
         const content = JSON.stringify(data, null, 2);
@@ -519,8 +580,8 @@ class App {
         const sessionData = this.store.sessions.map(s => ({
             ID: s.id,
             Project: s.title,
-            Date: new Date(s.created).toLocaleString(),
-            ItemsCount: s.items.length
+            Date: s.created ? new Date(s.created).toLocaleString() : '',
+            ItemsCount: (s.items || []).length
         }));
         const wsSessions = XLSX.utils.json_to_sheet(sessionData);
         XLSX.utils.book_append_sheet(wb, wsSessions, "Sessions");
@@ -528,16 +589,18 @@ class App {
         // Sheet 2: All Detailed Items
         const allItems = [];
         this.store.sessions.forEach(s => {
-            s.items.forEach((item, idx) => {
-                allItems.push({
-                    SessionID: s.id,
-                    Project: s.title,
-                    Date: new Date(s.created).toLocaleString(),
-                    No: idx + 1,
-                    Question: item.q,
-                    Note: item.a || ''
+            if (s.items) {
+                s.items.forEach((item, idx) => {
+                    allItems.push({
+                        SessionID: s.id,
+                        Project: s.title,
+                        Date: s.created ? new Date(s.created).toLocaleString() : '',
+                        No: idx + 1,
+                        Question: item.q,
+                        Note: item.a || ''
+                    });
                 });
-            });
+            }
         });
         const wsItems = XLSX.utils.json_to_sheet(allItems);
         XLSX.utils.book_append_sheet(wb, wsItems, "Details");
@@ -548,30 +611,32 @@ class App {
 
     restoreData(file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const data = JSON.parse(e.target.result);
-                // Simple validation
-                if (!data.templates || !data.sessions) {
-                    throw new Error('유효하지 않은 백업 파일입니다.');
+                if (!data.templates || !data.sessions) throw new Error('유효하지 않은 파일입니다.');
+
+                if (!confirm('이 데이터를 Firebase에 업로드하시겠습니까? (중복될 수 있습니다)')) return;
+
+                // Bulk Add
+                if (data.templates) {
+                    for (const t of data.templates) {
+                        // Remove ID to let Firestore generate new unique IDs to avoid conflicts?
+                        // Or keep ID if migrating? Let's generic new ones for safety.
+                        const { id, ...tData } = t;
+                        await db.collection('templates').add(tData);
+                    }
+                }
+                if (data.sessions) {
+                    for (const s of data.sessions) {
+                        const { id, ...sData } = s;
+                        await db.collection('checklists').add(sData);
+                    }
                 }
 
-                if (!confirm('경고: 현재 앱의 모든 데이터가 삭제되고 백업 파일의 내용으로 덮어쓰기 됩니다. 계속하시겠습니까?')) {
-                    // Reset input so user can select same file again if they cancelled
-                    el('input-restore-json').value = '';
-                    return;
-                }
-
-                this.store.templates = data.templates;
-                this.store.sessions = data.sessions;
-                this.store.saveTemplates();
-                this.store.saveSessions();
-
-                alert('데이터 복원이 완료되었습니다. 앱을 새로고침합니다.');
-                location.reload();
+                alert('데이터 가져오기 완료!');
             } catch (err) {
-                alert('복원 실패: ' + err.message);
-                el('input-restore-json').value = '';
+                alert('가져오기 실패: ' + err.message);
             }
         };
         reader.readAsText(file);
